@@ -92,7 +92,26 @@ namespace EventFlux.RedisFlow.Workers
                         }
                     }
 
-                    await _db.StreamAcknowledgeAsync(_options.StreamName, _options.ConsumerGroup, entry.Id);
+                    try
+                    {
+                        await _db.StreamAcknowledgeAsync(_options.StreamName, _options.ConsumerGroup, entry.Id);
+                        _logger.LogDebug("Acknowledged stream entry {Id} in group {Group}", entry.Id, _options.ConsumerGroup);
+
+                        // Optionally delete the entry from the stream to avoid reprocessing on restarts
+                        try
+                        {
+                            var deleted = await _db.StreamDeleteAsync(_options.StreamName, new StackExchange.Redis.RedisValue[] { entry.Id });
+                            _logger.LogDebug("Deleted stream entry {Id} from stream {Stream} (deleted={Count})", entry.Id, _options.StreamName, deleted);
+                        }
+                        catch (System.Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to delete stream entry {Id} from stream {Stream}", entry.Id, _options.StreamName);
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to acknowledge stream entry {Id} in group {Group}", entry.Id, _options.ConsumerGroup);
+                    }
                 }
 
                 await Task.Delay(100, stoppingToken);

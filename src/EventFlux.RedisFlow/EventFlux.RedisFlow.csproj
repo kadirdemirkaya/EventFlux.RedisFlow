@@ -1,17 +1,37 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFrameworks>net6.0;net7.0;net8.0;net9.0</TargetFrameworks>
+		<LangVersion>preview</LangVersion>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+		<PackageId>EventFlux.RedisFlow</PackageId>
+		<Version>1.0.1</Version>
+		<Authors>Kadir Demirkaya</Authors>
+		<PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
+		<Description>Lightweight .NET library for event-driven applications, providing distributed event support and domain events with EventFlux and Redis.</Description>
+		<RepositoryType>git</RepositoryType>
+		<PackageTags>
+			CQRS;EventBus;EventSourcing;DistributedEvents;Redis;EventFlux;DomainEvents;.NET;MessageBroker;EventDriven
+		</PackageTags>
+		<PackageReleaseNotes></PackageReleaseNotes>
+		<AssemblyInformationalVersion>1.0.1</AssemblyInformationalVersion>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="EventFlux" Version="1.2.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.0" />
-    <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-  </ItemGroup>
+	<ItemGroup>
+		<None Include="..\..\README.md" Pack="true" PackagePath="" />
+		<None Include="..\..\LICENSE.txt" Pack="true" PackagePath="" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="EventFlux" Version="1.2.0" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Options" Version="8.0.0" />
+		<PackageReference Include="StackExchange.Redis" Version="2.8.16" />
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+	</ItemGroup>
 
 </Project>
