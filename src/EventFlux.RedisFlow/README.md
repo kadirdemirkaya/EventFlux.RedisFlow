@@ -69,6 +69,43 @@ public class MyEventHandler : IEventHandler<MyEvent>
 }
 ```
 
+6. Access event context inside your event handlers:
+
+- If your producer sends an event context (version, configs, tenant info, etc.), you can access it inside your handler using IEventContextAccessor.
+
+```csharp
+public class PublishEventHandler : IEventHandler<PublishEventRequest>
+{
+    private readonly IEventContextAccessor _contextAccessor;
+
+    public PublishEventHandler(IEventContextAccessor contextAccessor)
+    {
+        _contextAccessor = contextAccessor;
+    }
+
+    public async Task Handle(PublishEventRequest request)
+    {
+        var context = _contextAccessor.EventContext;
+
+        if (context != null)
+        {
+            Console.WriteLine($"Context Version: {context.Version}");
+
+            if (context.Configs != null)
+            {
+                foreach (var cfg in context.Configs)
+                {
+                    Console.WriteLine($"{cfg.Key}: {cfg.Value}");
+                }
+            }
+        }
+
+        // handle event logic
+    }
+}
+```
+
+
 The library's `AddRedisEventQueue(...)` will scan the assembly you pass and register `IEventHandler<T>` implementations automatically.
 
 **Behavior and important details**

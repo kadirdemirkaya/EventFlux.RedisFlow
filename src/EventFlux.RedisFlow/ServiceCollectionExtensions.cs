@@ -10,6 +10,7 @@ using StackExchange.Redis;
 namespace EventFlux.RedisFlow
 {
     using EventFlux.Extensions;
+    using EventFlux.RedisFlow.Abstractions;
     using Redis;
 
     public static class ServiceCollectionExtensions
@@ -53,6 +54,8 @@ namespace EventFlux.RedisFlow
             services.AddSingleton<IRedisStreamPublisher, RedisStreamPublisher>();
             services.AddHostedService<Workers.RedisStreamWorker>();
             services.AddHostedService<Hosted.EventDiscoveryLogger>();
+
+            services.AddScoped<IEventContextAccessor, EventContextAccessor>();
 
             services.AddSingleton<IConnectionMultiplexer>(sp =>
             {
