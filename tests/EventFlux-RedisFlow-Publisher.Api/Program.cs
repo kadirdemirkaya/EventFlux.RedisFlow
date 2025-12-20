@@ -36,4 +36,21 @@ app.MapPost("/publish-sendevent", async (SendEventRequest req, IRedisStreamPubli
     return Results.Ok();
 }).WithOpenApi();
 
+app.MapPost("/publish-with-context", async (PublishEventRequest req, IRedisStreamPublisher publisher) =>
+{
+    var payload = JsonConvert.SerializeObject(req);
+    var context = new EventFlux.RedisFlow.Abstractions.EventContext
+    {
+        Version = "1.2.3",
+        Configs = new Dictionary<string, string>
+        {
+            { "TenantId", "1001" },
+            { "Source", "ContextAPI" }
+        }
+    };
+
+    await publisher.PublishAsync(nameof(PublishEventRequest), payload, context);
+    return Results.Ok();
+}).WithOpenApi();
+
 app.Run();
