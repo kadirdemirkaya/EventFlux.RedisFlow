@@ -1,3 +1,10 @@
+## NuGet Package Information
+
+| Package | Downloads | License |
+|---------|-----------|---------|
+| [![NuGet](https://img.shields.io/nuget/v/EventFlux.RedisFlow)](https://www.nuget.org/packages/EventFlux.RedisFlow) | [![Downloads](https://img.shields.io/nuget/dt/EventFlux.RedisFlow)](https://www.nuget.org/packages/EventFlux.RedisFlow) | [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/kadirdemirkaya/EventFlux/blob/main/LICENSE.txt) |
+
+
 **EventFlux.RedisFlow**
 
 Lightweight helper library for publishing and consuming EventFlux events via Redis Streams.
