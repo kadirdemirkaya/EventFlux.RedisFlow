@@ -36,6 +36,14 @@ namespace EventFlux.RedisFlow.Redis
         /// </summary>
         public string? DeadLetterStreamName { get; set; }
 
+        /// <summary>
+        /// Deletes an acknowledged entry from the stream once every consumer group of the stream has read and
+        /// acknowledged it, so that other consumer groups still receive entries this group has already processed.
+        /// With a single consumer group entries are deleted right after they are acknowledged.
+        /// When <c>false</c>, the worker never deletes entries. Default is <c>true</c>.
+        /// </summary>
+        public bool DeleteProcessedEntries { get; set; } = true;
+
         internal string ResolveDeadLetterStreamName()
         {
             return string.IsNullOrEmpty(DeadLetterStreamName) ? StreamName + "-dead-letter" : DeadLetterStreamName!;

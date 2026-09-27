@@ -23,6 +23,7 @@
 			- Microsoft.Extensions.* dependencies follow each target's major version (net8.0 uses 8.x), which fixes CS1705 in net8.0 applications
 			- Added IRedisStreamPublisher.PublishAsync&lt;TEvent&gt;(TEvent, CancellationToken) that writes the same type name and JSON payload the worker reads
 			- Failed messages are no longer acknowledged and deleted: they stay pending, are retried after RetryIdleTime and are moved to a dead-letter stream after MaxDeliveryAttempts deliveries (new RedisStreamOptions: EnableRetry, MaxDeliveryAttempts, RetryIdleTime, DeadLetterStreamName)
+			- Fixed entries being lost for other consumer groups: an acknowledged entry is deleted only once every consumer group of the stream has read and acknowledged it (new RedisStreamOptions.DeleteProcessedEntries, default true; false keeps all entries)
 			- The Redis stream entry format is unchanged; entries written by 1.0.x are read by 1.1.0 and the other way round</PackageReleaseNotes>
 		<AssemblyInformationalVersion>1.1.0</AssemblyInformationalVersion>
 		<PackageReadmeFile>README.md</PackageReadmeFile>

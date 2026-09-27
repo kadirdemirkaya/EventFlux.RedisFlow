@@ -15,6 +15,8 @@ namespace EventFlux.RedisFlow.Tests.Fakes
 
         public HashSet<string> FailingAddStreams { get; } = new HashSet<string>();
 
+        public bool FailGroupInfo { get; set; }
+
         public IConnectionMultiplexer Multiplexer { get; private set; } = null!;
 
         public IDatabase Database { get; private set; } = null!;
@@ -67,6 +69,14 @@ namespace EventFlux.RedisFlow.Tests.Fakes
             }
         }
 
+        public void Ack(string stream, string group, string id)
+        {
+            lock (_gate)
+            {
+                Acknowledge(stream, group, id);
+            }
+        }
+
         public void Deliver(string stream, string group, string consumer, string id)
         {
             lock (_gate)
@@ -99,9 +109,13 @@ namespace EventFlux.RedisFlow.Tests.Fakes
                     case "StreamDeleteAsync":
                         return Task.FromResult(Delete(Key(a[0]), (RedisValue[])a[1]!));
                     case "StreamPendingMessagesAsync":
-                        return Task.FromResult(PendingMessages(Key(a[0]), Value(a[1]), (int)a[2]!, (RedisValue?)a[4]));
+                        return Task.FromResult(PendingMessages(Key(a[0]), Value(a[1]), (int)a[2]!, (RedisValue?)a[4], (RedisValue?)a[5]));
                     case "StreamClaimAsync":
                         return Task.FromResult(Claim(Key(a[0]), Value(a[1]), Value(a[2]), (long)a[3]!, (RedisValue[])a[4]!));
+                    case "StreamGroupInfoAsync":
+                        return Task.FromResult(GroupInfo(Key(a[0])));
+                    case "StreamPendingAsync":
+                        return Task.FromResult(PendingSummary(Key(a[0]), Value(a[1])));
                 }
             }
 
@@ -163,12 +177,13 @@ namespace EventFlux.RedisFlow.Tests.Fakes
             return list.RemoveAll(e => set.Contains(e.Id.ToString()));
         }
 
-        private StreamPendingMessageInfo[] PendingMessages(string stream, string group, int count, RedisValue? minId)
+        private StreamPendingMessageInfo[] PendingMessages(string stream, string group, int count, RedisValue? minId, RedisValue? maxId)
         {
             if (!_groups.TryGetValue((stream, group), out var g))
                 throw new RedisServerException("NOGROUP");
             return g.Pending
                 .Where(kv => minId == null || minId.Value.IsNull || Compare(kv.Key, minId.Value.ToString()) >= 0)
+                .Where(kv => maxId == null || maxId.Value.IsNull || Compare(kv.Key, maxId.Value.ToString()) <= 0)
                 .OrderBy(kv => kv.Key, Comparer<string>.Create(Compare))
                 .Take(count)
                 .Select(kv => CreatePendingInfo(kv.Key, kv.Value.Consumer, NowMs - kv.Value.LastDeliveredMs, kv.Value.DeliveryCount))
@@ -193,6 +208,36 @@ namespace EventFlux.RedisFlow.Tests.Fakes
                 result.Add(entry);
             }
             return result.ToArray();
+        }
+
+        private StreamGroupInfo[] GroupInfo(string stream)
+        {
+            if (FailGroupInfo)
+                throw new RedisServerException("fake group info failure");
+            if (!_streams.ContainsKey(stream))
+                throw new RedisServerException("ERR no such key");
+            return _groups
+                .Where(kv => kv.Key.Stream == stream)
+                .Select(kv => (StreamGroupInfo)Activator.CreateInstance(
+                    typeof(StreamGroupInfo),
+                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public,
+                    null,
+                    new object?[] { kv.Key.Group, 1, kv.Value.Pending.Count, kv.Value.LastDeliveredId, null, null },
+                    null)!)
+                .ToArray();
+        }
+
+        private StreamPendingInfo PendingSummary(string stream, string group)
+        {
+            if (!_groups.TryGetValue((stream, group), out var g))
+                throw new RedisServerException("NOGROUP");
+            var ids = g.Pending.Keys.OrderBy(k => k, Comparer<string>.Create(Compare)).ToArray();
+            return (StreamPendingInfo)Activator.CreateInstance(
+                typeof(StreamPendingInfo),
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public,
+                null,
+                new object[] { ids.Length, ids.Length > 0 ? (RedisValue)ids[0] : RedisValue.Null, ids.Length > 0 ? (RedisValue)ids[^1] : RedisValue.Null, Array.Empty<StreamConsumer>() },
+                null)!;
         }
 
         private static StreamPendingMessageInfo CreatePendingInfo(string id, string consumer, long idle, int deliveries)
