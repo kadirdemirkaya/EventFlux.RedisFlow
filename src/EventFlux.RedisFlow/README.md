@@ -2,7 +2,7 @@
 
 | Package | Downloads | License |
 |---------|-----------|---------|
-| [![NuGet](https://img.shields.io/nuget/v/EventFlux.RedisFlow)](https://www.nuget.org/packages/EventFlux.RedisFlow) | [![Downloads](https://img.shields.io/nuget/dt/EventFlux.RedisFlow)](https://www.nuget.org/packages/EventFlux.RedisFlow) | [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/kadirdemirkaya/EventFlux.RedisFlow-Original/blob/main/LICENSE.txt) |
+| [![NuGet](https://img.shields.io/nuget/v/EventFlux.RedisFlow)](https://www.nuget.org/packages/EventFlux.RedisFlow) | [![Downloads](https://img.shields.io/nuget/dt/EventFlux.RedisFlow)](https://www.nuget.org/packages/EventFlux.RedisFlow) | [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/kadirdemirkaya/EventFlux.RedisFlow/blob/main/LICENSE.txt) |
 
 
 **EventFlux.RedisFlow**
