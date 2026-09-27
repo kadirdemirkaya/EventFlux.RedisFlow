@@ -16,6 +16,7 @@ entries, resolves event types, publishes them to EventFlux's `IEventBus` and so 
 - **Background consumer worker**: `RedisStreamWorker` reads the stream through a consumer group, resolves event types and publishes them to EventFlux.
 - **Automatic handler registration**: `AddRedisEventQueue(...)` forwards the assemblies you pass to EventFlux's `AddEventBus` and registers their `IEventHandler<T>` implementations.
 - **Retry and dead-letter**: a failed entry is not acknowledged; it is retried and, after a configurable number of deliveries, moved to a dead-letter stream.
+- **Survives Redis outages**: the worker keeps running while Redis is unavailable, retries with a backoff and recreates a deleted consumer group; the application also starts while Redis is down.
 - **Safe fan-out**: processed entries are deleted only after every consumer group of the stream has processed them, so each group receives every entry.
 - **Flexible type resolution**: resolves registered types by name and falls back to a `GenericEvent` when the concrete type isn't available.
 - **Consumer group per instance option**: append machine-name or GUID to `ConsumerGroup` to allow multiple independent consumers to process the same stream.
@@ -174,11 +175,25 @@ public class PublishEventHandler : IEventHandler<PublishEventRequest>
   `CancellationToken` is cancelled only when the host's shutdown timeout (`HostOptions.ShutdownTimeout`) expires; the
   entry then stays pending and is retried after the next start.
 
+**Redis outages and connection**
+
+- The application starts even when Redis is not reachable yet. Unless your connection string sets `abortConnect`
+  explicitly, the library connects with `abortConnect=false`, so the connection is retried in the background. Set
+  `abortConnect=true` in `ConnectionString` if you prefer the application to fail at startup when Redis is down.
+- While Redis is unavailable, the worker logs the error and retries after 1, 2, 4, 8, 16 and then every 30 seconds. It
+  does not stop and it does not stop the host. Consumption resumes when Redis is back.
+- If the stream or the consumer group is deleted while the worker runs, the worker recreates the group (reading from the
+  start of the stream) and continues.
+- If an acknowledgement fails because the connection dropped after the handler finished, the entry stays pending and is
+  handled again after `RetryIdleTime` (at-least-once delivery).
+- `IRedisStreamPublisher.PublishAsync` throws `RedisConnectionException` / `RedisTimeoutException` while Redis is
+  unavailable; retry or handle it in the calling code.
+
 **Options (`RedisStream` section)**
 
 | Option | Default | Description |
 |---|---|---|
-| `ConnectionString` | `""` | Redis connection string. |
+| `ConnectionString` | `""` | Redis connection string. `abortConnect=false` is added unless you set `abortConnect` yourself. |
 | `StreamName` | `event-stream` | Stream to publish to and consume from. |
 | `ConsumerGroup` | `event-group` | Consumer group of this service. |
 | `ConsumerName` | machine name | Consumer name inside the group. Use a distinct name per instance. |
@@ -233,6 +248,7 @@ each other's entries.
 | `Microsoft.Extensions.*` dependencies follow your target framework (8.x on `net8.0`) | Nothing, unless you relied on 9.x packages flowing in transitively on `net8.0`; then reference them directly. |
 | A failing handler no longer loses the entry | 1.0.x acknowledged and deleted the entry even when its handler failed. 1.1.0 retries it and moves it to `{StreamName}-dead-letter` after 5 deliveries. Entries that were left pending by 1.0.x are retried after the upgrade. Set `EnableRetry` to `false` to keep failed entries pending without retrying. |
 | Handlers may run more than once | Retries make delivery at-least-once; make handlers idempotent. |
+| The application starts while Redis is down | 1.0.x failed at startup when Redis was not reachable. 1.1.0 starts and connects in the background. Add `abortConnect=true` to `ConnectionString` to keep the old behavior. |
 | Entries are no longer deleted before other consumer groups read them | 1.0.x deleted each entry as soon as one group processed it, so other groups could miss it. 1.1.0 deletes it after every group has acknowledged it. A 1.0.x consumer still running on the same stream keeps deleting immediately, so upgrade all consumers of a fan-out stream. Remove consumer groups you no longer use (for example old groups created with `appendGuidToConsumerGroup`), otherwise their unread entries stay in the stream. |
 | New typed publish API | Optional: replace `PublishAsync(nameof(T), serializedJson)` with `PublishAsync(e)`; the stream entry is identical. |
 

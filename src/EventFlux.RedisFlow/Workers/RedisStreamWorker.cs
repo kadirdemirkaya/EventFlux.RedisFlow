@@ -18,6 +18,7 @@ namespace EventFlux.RedisFlow.Workers
     public class RedisStreamWorker : BackgroundService
     {
         private static readonly TimeSpan MaxRetryScanInterval = TimeSpan.FromSeconds(1);
+        private static readonly TimeSpan MaxReconnectDelay = TimeSpan.FromSeconds(30);
 
         private readonly IDatabase _db;
         private readonly RedisStreamOptions _options;
@@ -38,39 +39,87 @@ namespace EventFlux.RedisFlow.Workers
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            try
-            {
-                await _db.StreamCreateConsumerGroupAsync(_options.StreamName, _options.ConsumerGroup, "0-0", createStream: true).ConfigureAwait(false);
-            }
-            catch { }
+            var consumerGroupReady = false;
+            var consecutiveFailures = 0;
 
             while (!stoppingToken.IsCancellationRequested)
             {
-                if (_options.EnableRetry && IsRetryScanDue())
+                try
                 {
-                    await RetryPendingAsync(stoppingToken).ConfigureAwait(false);
+                    if (!consumerGroupReady)
+                    {
+                        await EnsureConsumerGroupAsync().ConfigureAwait(false);
+                        consumerGroupReady = true;
+                    }
+
+                    await PollAsync(stoppingToken).ConfigureAwait(false);
+                    consecutiveFailures = 0;
                 }
-
-                var entries = await _db.StreamReadGroupAsync(
-                    _options.StreamName,
-                    _options.ConsumerGroup,
-                    _options.ConsumerName,
-                    ">",
-                    _options.BatchSize
-                ).ConfigureAwait(false);
-
-                foreach (var entry in entries)
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
-                    if (stoppingToken.IsCancellationRequested)
-                        break;
-
-                    await ProcessEntryAsync(entry, _handlerCancellation.Token).ConfigureAwait(false);
+                    return;
                 }
-
-                await DeleteProcessedEntriesAsync().ConfigureAwait(false);
+                catch (RedisServerException ex) when (ex.Message.StartsWith("NOGROUP", StringComparison.Ordinal))
+                {
+                    consumerGroupReady = false;
+                    consecutiveFailures++;
+                    _logger.LogWarning("Consumer group {Group} or stream {Stream} no longer exists; recreating it", _options.ConsumerGroup, _options.StreamName);
+                }
+                catch (Exception ex)
+                {
+                    consecutiveFailures++;
+                    var delay = GetRetryDelay(consecutiveFailures);
+                    _logger.LogError(ex, "Reading stream {Stream} failed ({Failures} consecutive failures); retrying in {Delay}", _options.StreamName, consecutiveFailures, delay);
+                    await Task.Delay(delay, stoppingToken).ConfigureAwait(false);
+                    continue;
+                }
 
                 await Task.Delay(100, stoppingToken).ConfigureAwait(false);
             }
+        }
+
+        private async Task EnsureConsumerGroupAsync()
+        {
+            try
+            {
+                await _db.StreamCreateConsumerGroupAsync(_options.StreamName, _options.ConsumerGroup, "0-0", createStream: true).ConfigureAwait(false);
+                _logger.LogInformation("Created consumer group {Group} on stream {Stream}", _options.ConsumerGroup, _options.StreamName);
+            }
+            catch (RedisServerException ex) when (ex.Message.StartsWith("BUSYGROUP", StringComparison.Ordinal))
+            {
+            }
+        }
+
+        private async Task PollAsync(CancellationToken stoppingToken)
+        {
+            if (_options.EnableRetry && IsRetryScanDue())
+            {
+                await RetryPendingAsync(stoppingToken).ConfigureAwait(false);
+            }
+
+            var entries = await _db.StreamReadGroupAsync(
+                _options.StreamName,
+                _options.ConsumerGroup,
+                _options.ConsumerName,
+                ">",
+                _options.BatchSize
+            ).ConfigureAwait(false);
+
+            foreach (var entry in entries)
+            {
+                if (stoppingToken.IsCancellationRequested)
+                    break;
+
+                await ProcessEntryAsync(entry, _handlerCancellation.Token).ConfigureAwait(false);
+            }
+
+            await DeleteProcessedEntriesAsync().ConfigureAwait(false);
+        }
+
+        internal static TimeSpan GetRetryDelay(int consecutiveFailures)
+        {
+            var seconds = Math.Pow(2, Math.Min(Math.Max(consecutiveFailures, 1) - 1, 5));
+            return TimeSpan.FromSeconds(Math.Min(seconds, MaxReconnectDelay.TotalSeconds));
         }
 
         public override async Task StopAsync(CancellationToken cancellationToken)

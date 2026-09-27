@@ -24,6 +24,8 @@
 			- Added IRedisStreamPublisher.PublishAsync&lt;TEvent&gt;(TEvent, CancellationToken) that writes the same type name and JSON payload the worker reads
 			- Failed messages are no longer acknowledged and deleted: they stay pending, are retried after RetryIdleTime and are moved to a dead-letter stream after MaxDeliveryAttempts deliveries (new RedisStreamOptions: EnableRetry, MaxDeliveryAttempts, RetryIdleTime, DeadLetterStreamName)
 			- Fixed entries being lost for other consumer groups: an acknowledged entry is deleted only once every consumer group of the stream has read and acknowledged it (new RedisStreamOptions.DeleteProcessedEntries, default true; false keeps all entries)
+			- Fixed the worker stopping the application when Redis is unavailable for more than a few seconds or when the stream or consumer group is deleted; the worker now retries with a backoff of up to 30 seconds and recreates the consumer group
+			- The application now starts while Redis is unavailable and connects once Redis is reachable; add abortConnect=true to the connection string to keep failing at startup
 			- The Redis stream entry format is unchanged; entries written by 1.0.x are read by 1.1.0 and the other way round</PackageReleaseNotes>
 		<AssemblyInformationalVersion>1.1.0</AssemblyInformationalVersion>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
