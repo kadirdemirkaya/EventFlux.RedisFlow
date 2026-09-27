@@ -75,7 +75,7 @@ namespace EventFlux.RedisFlow.Tests
             await using var h = WorkerHarness.Create(("RetryIdleTime", "00:00:00"), ("MaxDeliveryAttempts", "3"));
             var id = h.Publish(nameof(PaymentFailed), Payload("fraud"), new StackExchange.Redis.NameValueEntry("version", "2"));
 
-            await h.RunUntilAsync(() => h.Fake.Entries("orders-dead-letter").Count == 1);
+            await h.RunUntilAsync(() => h.Fake.Entries("orders-dead-letter").Count == 1 && h.Fake.Entries(WorkerHarness.Stream).Count == 0);
 
             Assert.Equal(3, Probe.Calls);
             var dead = Assert.Single(h.Fake.Entries("orders-dead-letter"));

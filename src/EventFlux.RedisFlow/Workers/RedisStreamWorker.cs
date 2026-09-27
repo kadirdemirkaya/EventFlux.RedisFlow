@@ -24,6 +24,7 @@ namespace EventFlux.RedisFlow.Workers
         private readonly IServiceProvider _services;
         private readonly Microsoft.Extensions.Logging.ILogger<RedisStreamWorker> _logger;
         private readonly CancellationTokenSource _handlerCancellation = new CancellationTokenSource();
+        private readonly List<RedisValue> _acknowledged = new List<RedisValue>();
         private RedisValue? _retryCursor;
         private long _lastRetryScan;
 
@@ -65,6 +66,8 @@ namespace EventFlux.RedisFlow.Workers
 
                     await ProcessEntryAsync(entry, _handlerCancellation.Token).ConfigureAwait(false);
                 }
+
+                await DeleteProcessedEntriesAsync().ConfigureAwait(false);
 
                 await Task.Delay(100, stoppingToken).ConfigureAwait(false);
             }
@@ -213,6 +216,8 @@ namespace EventFlux.RedisFlow.Workers
                 _logger.LogInformation("Retrying stream entry {Id} (delivery {Delivery})", entry.Id, delivered + 1);
                 await ProcessEntryAsync(entry, _handlerCancellation.Token).ConfigureAwait(false);
             }
+
+            await DeleteProcessedEntriesAsync().ConfigureAwait(false);
         }
 
         internal async Task<bool> DeadLetterAsync(StreamEntry entry, int deliveryCount)
@@ -251,15 +256,75 @@ namespace EventFlux.RedisFlow.Workers
             await _db.StreamAcknowledgeAsync(_options.StreamName, _options.ConsumerGroup, id).ConfigureAwait(false);
             _logger.LogDebug("Acknowledged stream entry {Id} in group {Group}", id, _options.ConsumerGroup);
 
+            if (_options.DeleteProcessedEntries)
+                _acknowledged.Add(id);
+        }
+
+        internal async Task DeleteProcessedEntriesAsync()
+        {
+            if (_acknowledged.Count == 0)
+                return;
+
+            var candidates = _acknowledged.ToArray();
+            _acknowledged.Clear();
+
             try
             {
-                var deleted = await _db.StreamDeleteAsync(_options.StreamName, new RedisValue[] { id }).ConfigureAwait(false);
-                _logger.LogDebug("Deleted stream entry {Id} from stream {Stream} (deleted={Count})", id, _options.StreamName, deleted);
+                var groups = await _db.StreamGroupInfoAsync(_options.StreamName).ConfigureAwait(false);
+                var deletable = new HashSet<RedisValue>(candidates);
+
+                foreach (var group in groups)
+                {
+                    if (group.Name == _options.ConsumerGroup)
+                        continue;
+
+                    deletable.RemoveWhere(id => CompareStreamIds(id, group.LastDeliveredId) > 0);
+
+                    if (group.PendingMessageCount > 0 && deletable.Count > 0)
+                    {
+                        var ordered = deletable.OrderBy(id => id, Comparer<RedisValue>.Create(CompareStreamIds)).ToArray();
+                        var pending = await _db.StreamPendingMessagesAsync(
+                            _options.StreamName,
+                            group.Name,
+                            group.PendingMessageCount,
+                            RedisValue.Null,
+                            ordered[0],
+                            ordered[ordered.Length - 1]
+                        ).ConfigureAwait(false);
+
+                        foreach (var p in pending)
+                            deletable.Remove(p.MessageId);
+                    }
+
+                    if (deletable.Count == 0)
+                        return;
+                }
+
+                var deleted = await _db.StreamDeleteAsync(_options.StreamName, deletable.ToArray()).ConfigureAwait(false);
+                _logger.LogDebug("Deleted {Count} processed entries from stream {Stream}; {Kept} kept for other consumer groups", deleted, _options.StreamName, candidates.Length - deletable.Count);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to delete stream entry {Id}", id);
+                _logger.LogWarning(ex, "Failed to delete processed entries from stream {Stream}; they are kept", _options.StreamName);
             }
+        }
+
+        internal static int CompareStreamIds(RedisValue x, RedisValue y)
+        {
+            var (xMs, xSeq) = ParseStreamId(x.ToString());
+            var (yMs, ySeq) = ParseStreamId(y.ToString());
+            return xMs != yMs ? xMs.CompareTo(yMs) : xSeq.CompareTo(ySeq);
+        }
+
+        private static (ulong Ms, ulong Seq) ParseStreamId(string id)
+        {
+            var dash = id.IndexOf('-');
+            if (dash < 0)
+                return (ulong.TryParse(id, out var onlyMs) ? onlyMs : 0, 0);
+
+            ulong.TryParse(id.Substring(0, dash), out var ms);
+            ulong.TryParse(id.Substring(dash + 1), out var seq);
+            return (ms, seq);
         }
 
         private bool IsRetryScanDue()

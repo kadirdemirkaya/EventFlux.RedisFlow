@@ -35,18 +35,22 @@ namespace EventFlux.RedisFlow.Tests.Support
 
         public static WorkerHarness Create(params (string Key, string Value)[] settings)
         {
+            return Create(FakeStreamDatabase.Create(), Group, settings);
+        }
+
+        public static WorkerHarness Create(FakeStreamDatabase fake, string group, params (string Key, string Value)[] settings)
+        {
             var values = new Dictionary<string, string?>
             {
                 ["RedisStream:ConnectionString"] = "fake:6379",
                 ["RedisStream:StreamName"] = Stream,
-                ["RedisStream:ConsumerGroup"] = Group,
-                ["RedisStream:ConsumerName"] = Consumer,
+                ["RedisStream:ConsumerGroup"] = group,
+                ["RedisStream:ConsumerName"] = Consumer + "-" + group,
             };
             foreach (var (key, value) in settings)
                 values["RedisStream:" + key] = value;
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
-            var fake = FakeStreamDatabase.Create();
             var services = new ServiceCollection();
             services.AddLogging();
             services.AddEventBus(typeof(WorkerHarness).Assembly);

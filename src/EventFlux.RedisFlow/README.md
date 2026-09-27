@@ -16,6 +16,7 @@ entries, resolves event types, publishes them to EventFlux's `IEventBus` and so 
 - **Background consumer worker**: `RedisStreamWorker` reads the stream through a consumer group, resolves event types and publishes them to EventFlux.
 - **Automatic handler registration**: `AddRedisEventQueue(...)` forwards the assemblies you pass to EventFlux's `AddEventBus` and registers their `IEventHandler<T>` implementations.
 - **Retry and dead-letter**: a failed entry is not acknowledged; it is retried and, after a configurable number of deliveries, moved to a dead-letter stream.
+- **Safe fan-out**: processed entries are deleted only after every consumer group of the stream has processed them, so each group receives every entry.
 - **Flexible type resolution**: resolves registered types by name and falls back to a `GenericEvent` when the concrete type isn't available.
 - **Consumer group per instance option**: append machine-name or GUID to `ConsumerGroup` to allow multiple independent consumers to process the same stream.
 - **Startup diagnostics**: logs discovered event types and handler registrations to help debugging.
@@ -155,7 +156,8 @@ public class PublishEventHandler : IEventHandler<PublishEventRequest>
 
 **Error handling**
 
-- A handler that completes without an exception acknowledges the entry (`XACK`) and deletes it from the stream.
+- A handler that completes without an exception acknowledges the entry (`XACK`). The entry is then deleted from the
+  stream (`XDEL`) once every consumer group of the stream has read and acknowledged it; see "Acknowledgement and deletion".
 - A handler that throws does **not** acknowledge the entry. It stays pending in the consumer group.
 - Once an entry has been pending for `RetryIdleTime`, the worker claims it (`XPENDING` + `XCLAIM`) and runs the handler
   again. This also picks up entries left pending by a consumer that crashed or was stopped.
@@ -185,6 +187,7 @@ public class PublishEventHandler : IEventHandler<PublishEventRequest>
 | `MaxDeliveryAttempts` | `5` | Deliveries after which an entry is moved to the dead-letter stream. `0` or less retries without limit. |
 | `RetryIdleTime` | `00:00:30` | How long an entry must be pending before it is retried. Keep it longer than your slowest handler. |
 | `DeadLetterStreamName` | `{StreamName}-dead-letter` | Stream that receives entries over `MaxDeliveryAttempts`. |
+| `DeleteProcessedEntries` | `true` | Delete entries that every consumer group has acknowledged. `false` keeps all entries in the stream (for example for audit); trim the stream yourself then. |
 
 **Message format**
 
@@ -206,7 +209,13 @@ each other's entries.
 
 - **Consumer groups**: Redis consumer groups distribute messages across group members. If multiple services use the same `ConsumerGroup`, messages will be load-balanced (each message delivered to only one member). If you want multiple independent services to receive the same messages, give each service a distinct `ConsumerGroup` (use `appendGuidToConsumerGroup` or set unique `ConsumerGroup` values per app).
 
-- **Acknowledgement and deletion**: the worker acknowledges processed entries with `XACK` and then deletes them from the stream. Because the entry is deleted, a second consumer group that has not read it yet will not receive it.
+- **Acknowledgement and deletion**: the worker acknowledges processed entries with `XACK`. After each batch it checks the
+  stream's consumer groups (`XINFO GROUPS`, `XPENDING`) and deletes (`XDEL`) the entries that every other group has
+  already read and acknowledged. With a single consumer group this happens right after the acknowledgement, so the stream
+  does not grow. With several groups the last group to acknowledge an entry deletes it. An entry is kept while any group
+  has not read it yet or still has it pending, so a consumer group that no longer runs keeps its unread entries in the
+  stream; remove such groups with `XGROUP DESTROY`. Entries that stay pending after a failure do not hold back the
+  deletion of other entries.
 
 **Advanced options**
 
@@ -224,6 +233,7 @@ each other's entries.
 | `Microsoft.Extensions.*` dependencies follow your target framework (8.x on `net8.0`) | Nothing, unless you relied on 9.x packages flowing in transitively on `net8.0`; then reference them directly. |
 | A failing handler no longer loses the entry | 1.0.x acknowledged and deleted the entry even when its handler failed. 1.1.0 retries it and moves it to `{StreamName}-dead-letter` after 5 deliveries. Entries that were left pending by 1.0.x are retried after the upgrade. Set `EnableRetry` to `false` to keep failed entries pending without retrying. |
 | Handlers may run more than once | Retries make delivery at-least-once; make handlers idempotent. |
+| Entries are no longer deleted before other consumer groups read them | 1.0.x deleted each entry as soon as one group processed it, so other groups could miss it. 1.1.0 deletes it after every group has acknowledged it. A 1.0.x consumer still running on the same stream keeps deleting immediately, so upgrade all consumers of a fan-out stream. Remove consumer groups you no longer use (for example old groups created with `appendGuidToConsumerGroup`), otherwise their unread entries stay in the stream. |
 | New typed publish API | Optional: replace `PublishAsync(nameof(T), serializedJson)` with `PublishAsync(e)`; the stream entry is identical. |
 
 The stream entry format did not change: 1.0.x and 1.1.0 publishers and consumers can run side by side on the same stream.

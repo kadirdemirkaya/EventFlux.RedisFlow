@@ -21,6 +21,16 @@ namespace EventFlux.RedisFlow.Tests.NewApi
             Assert.True(RedisStreamWorker.NextStreamId("not-an-id").IsNull);
         }
 
+        [Theory]
+        [InlineData("5-1", "5-2", -1)]
+        [InlineData("10-0", "9-99", 1)]
+        [InlineData("1700000000000-3", "1700000000000-3", 0)]
+        [InlineData("2", "1-5", 1)]
+        public void CompareStreamIds_OrdersNumerically(string x, string y, int expected)
+        {
+            Assert.Equal(expected, Math.Sign(RedisStreamWorker.CompareStreamIds(x, y)));
+        }
+
         [Fact]
         public void Options_Defaults()
         {
@@ -30,6 +40,7 @@ namespace EventFlux.RedisFlow.Tests.NewApi
             Assert.Equal(5, options.MaxDeliveryAttempts);
             Assert.Equal(TimeSpan.FromSeconds(30), options.RetryIdleTime);
             Assert.Null(options.DeadLetterStreamName);
+            Assert.True(options.DeleteProcessedEntries);
             Assert.Equal("orders-dead-letter", options.ResolveDeadLetterStreamName());
         }
     }
