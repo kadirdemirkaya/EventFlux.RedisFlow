@@ -10,7 +10,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.20" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
-    <PackageReference Include="EventFlux" Version="1.2.0" />
+    <PackageReference Include="EventFlux" Version="2.1.1" />
   </ItemGroup>
 
   <ItemGroup>

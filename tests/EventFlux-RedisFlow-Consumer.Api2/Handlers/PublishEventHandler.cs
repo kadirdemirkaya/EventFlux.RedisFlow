@@ -13,7 +13,7 @@ namespace EventFlux_RedisFlow_Consumer.Api2.Handlers
             _contextAccessor = contextAccessor;
         }
 
-        public async Task Handle(PublishEventRequest request)
+        public async Task Handle(PublishEventRequest request, CancellationToken cancellationToken = default)
         {
             if (_contextAccessor.EventContext != null)
             {
