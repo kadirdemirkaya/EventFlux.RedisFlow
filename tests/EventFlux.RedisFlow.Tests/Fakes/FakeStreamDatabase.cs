@@ -17,6 +17,10 @@ namespace EventFlux.RedisFlow.Tests.Fakes
 
         public bool FailGroupInfo { get; set; }
 
+        public bool Unavailable { get; set; }
+
+        public int FailingAcknowledgements { get; set; }
+
         public IConnectionMultiplexer Multiplexer { get; private set; } = null!;
 
         public IDatabase Database { get; private set; } = null!;
@@ -69,6 +73,16 @@ namespace EventFlux.RedisFlow.Tests.Fakes
             }
         }
 
+        public void DeleteStream(string stream)
+        {
+            lock (_gate)
+            {
+                _streams.Remove(stream);
+                foreach (var key in _groups.Keys.Where(k => k.Stream == stream).ToArray())
+                    _groups.Remove(key);
+            }
+        }
+
         public void Ack(string stream, string group, string id)
         {
             lock (_gate)
@@ -94,6 +108,14 @@ namespace EventFlux.RedisFlow.Tests.Fakes
             var a = args ?? Array.Empty<object?>();
             lock (_gate)
             {
+                if (Unavailable)
+                    return FailedTask(targetMethod!.ReturnType, new RedisConnectionException(ConnectionFailureType.UnableToConnect, "fake redis unavailable"));
+                if (targetMethod!.Name == "StreamAcknowledgeAsync" && FailingAcknowledgements > 0)
+                {
+                    FailingAcknowledgements--;
+                    return FailedTask(targetMethod.ReturnType, new RedisTimeoutException("fake ack timeout", CommandStatus.Unknown));
+                }
+
                 switch (targetMethod!.Name)
                 {
                     case "StreamCreateConsumerGroupAsync":
@@ -120,6 +142,14 @@ namespace EventFlux.RedisFlow.Tests.Fakes
             }
 
             throw new NotSupportedException(targetMethod.Name);
+        }
+
+        private static object FailedTask(Type taskType, Exception ex)
+        {
+            var result = taskType.GetGenericArguments()[0];
+            return typeof(Task).GetMethod(nameof(Task.FromException), 1, new[] { typeof(Exception) })!
+                .MakeGenericMethod(result)
+                .Invoke(null, new object[] { ex })!;
         }
 
         private bool CreateConsumerGroup(string stream, string group)

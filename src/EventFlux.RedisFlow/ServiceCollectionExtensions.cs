@@ -65,7 +65,7 @@ namespace EventFlux.RedisFlow
             services.AddSingleton<IConnectionMultiplexer>(sp =>
             {
                 var opts = sp.GetRequiredService<IOptions<RedisStreamOptions>>().Value;
-                return ConnectionMultiplexer.Connect(opts.ConnectionString);
+                return ConnectionMultiplexer.Connect(CreateConnectionOptions(opts.ConnectionString));
             });
 
             foreach (var a in scanAssemblies)
@@ -97,6 +97,21 @@ namespace EventFlux.RedisFlow
             services.AddSingleton(new RegisteredHandlers(registered.ToArray()));
 
             return services;
+        }
+
+        internal static ConfigurationOptions CreateConnectionOptions(string connectionString)
+        {
+            var options = ConfigurationOptions.Parse(connectionString);
+
+            var abortConnectSet = connectionString
+                .Split(',')
+                .Select(part => part.Split('=')[0].Trim())
+                .Any(key => string.Equals(key, "abortConnect", StringComparison.OrdinalIgnoreCase));
+
+            if (!abortConnectSet)
+                options.AbortOnConnectFail = false;
+
+            return options;
         }
     }
 }
