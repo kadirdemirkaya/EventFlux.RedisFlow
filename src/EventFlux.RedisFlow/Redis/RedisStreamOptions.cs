@@ -44,6 +44,8 @@ namespace EventFlux.RedisFlow.Redis
         /// </summary>
         public bool DeleteProcessedEntries { get; set; } = true;
 
+        internal string? EphemeralGroupBaseName { get; set; }
+
         internal string ResolveDeadLetterStreamName()
         {
             return string.IsNullOrEmpty(DeadLetterStreamName) ? StreamName + "-dead-letter" : DeadLetterStreamName!;

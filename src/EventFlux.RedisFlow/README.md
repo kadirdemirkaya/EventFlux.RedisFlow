@@ -229,13 +229,18 @@ each other's entries.
   already read and acknowledged. With a single consumer group this happens right after the acknowledgement, so the stream
   does not grow. With several groups the last group to acknowledge an entry deletes it. An entry is kept while any group
   has not read it yet or still has it pending, so a consumer group that no longer runs keeps its unread entries in the
-  stream; remove such groups with `XGROUP DESTROY`. Entries that stay pending after a failure do not hold back the
+  stream; remove such groups with `XGROUP DESTROY` (groups created with `appendGuidToConsumerGroup` are removed
+  automatically). Every 30 seconds the worker also re-checks the oldest entries, so entries that were only kept for a
+  group that has since been deleted are removed too. Entries that stay pending after a failure do not hold back the
   deletion of other entries.
 
 **Advanced options**
 
 - `AddRedisEventQueue(..., appendMachineNameToConsumerGroup: true)` — append the machine name to `ConsumerGroup` so each instance has a per-host group.
-- `AddRedisEventQueue(..., appendGuidToConsumerGroup: true)` — append a GUID to `ConsumerGroup` so each instance is independent (useful for local testing).
+- `AddRedisEventQueue(..., appendGuidToConsumerGroup: true)` — append a GUID to `ConsumerGroup` so each instance is independent and receives every entry (useful for local testing and for per-instance notifications). The group belongs to that one instance:
+  - When the instance stops, it deletes its consumer group. Entries that were still pending in it (for example failed ones waiting for a retry) are dropped with the group.
+  - When an instance starts, it deletes groups named `{ConsumerGroup}-{32 hex digits}` whose consumers have all been idle for more than an hour, which is what an instance that crashed leaves behind.
+  - A new instance reads the entries that are still in the stream, as in 1.0.x: entries published while no instance was running are handled by the next one.
 - Handler lifetime follows EventFlux's `EventFluxOptions.HandlerLifetime` (default `Transient`); see "Registration with EventFlux".
 
 **Upgrading from 1.0.x**
@@ -249,7 +254,7 @@ each other's entries.
 | A failing handler no longer loses the entry | 1.0.x acknowledged and deleted the entry even when its handler failed. 1.1.0 retries it and moves it to `{StreamName}-dead-letter` after 5 deliveries. Entries that were left pending by 1.0.x are retried after the upgrade. Set `EnableRetry` to `false` to keep failed entries pending without retrying. |
 | Handlers may run more than once | Retries make delivery at-least-once; make handlers idempotent. |
 | The application starts while Redis is down | 1.0.x failed at startup when Redis was not reachable. 1.1.0 starts and connects in the background. Add `abortConnect=true` to `ConnectionString` to keep the old behavior. |
-| Entries are no longer deleted before other consumer groups read them | 1.0.x deleted each entry as soon as one group processed it, so other groups could miss it. 1.1.0 deletes it after every group has acknowledged it. A 1.0.x consumer still running on the same stream keeps deleting immediately, so upgrade all consumers of a fan-out stream. Remove consumer groups you no longer use (for example old groups created with `appendGuidToConsumerGroup`), otherwise their unread entries stay in the stream. |
+| Entries are no longer deleted before other consumer groups read them | 1.0.x deleted each entry as soon as one group processed it, so other groups could miss it. 1.1.0 deletes it after every group has acknowledged it. A 1.0.x consumer still running on the same stream keeps deleting immediately, so upgrade all consumers of a fan-out stream. Remove consumer groups you no longer use, otherwise their unread entries stay in the stream. Groups left by 1.0.x instances with `appendGuidToConsumerGroup` are removed by 1.1.0 instances with the same `ConsumerGroup` once they have been idle for an hour. |
 | New typed publish API | Optional: replace `PublishAsync(nameof(T), serializedJson)` with `PublishAsync(e)`; the stream entry is identical. |
 
 The stream entry format did not change: 1.0.x and 1.1.0 publishers and consumers can run side by side on the same stream.

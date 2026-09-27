@@ -134,6 +134,12 @@ namespace EventFlux.RedisFlow.Tests.Fakes
                         return Task.FromResult(PendingMessages(Key(a[0]), Value(a[1]), (int)a[2]!, (RedisValue?)a[4], (RedisValue?)a[5]));
                     case "StreamClaimAsync":
                         return Task.FromResult(Claim(Key(a[0]), Value(a[1]), Value(a[2]), (long)a[3]!, (RedisValue[])a[4]!));
+                    case "StreamDeleteConsumerGroupAsync":
+                        return Task.FromResult(_groups.Remove((Key(a[0]), Value(a[1]))));
+                    case "StreamConsumerInfoAsync":
+                        return Task.FromResult(ConsumerInfo(Key(a[0]), Value(a[1])));
+                    case "StreamRangeAsync":
+                        return Task.FromResult(Entries(Key(a[0])).Take((int?)a[3] ?? int.MaxValue).ToArray());
                     case "StreamGroupInfoAsync":
                         return Task.FromResult(GroupInfo(Key(a[0])));
                     case "StreamPendingAsync":
@@ -164,6 +170,7 @@ namespace EventFlux.RedisFlow.Tests.Fakes
         {
             if (!_groups.TryGetValue((stream, group), out var g))
                 throw new RedisServerException("NOGROUP");
+            g.Consumers[consumer] = NowMs;
             var result = Entries(stream)
                 .Where(e => Compare(e.Id.ToString(), g.LastDeliveredId) > 0)
                 .Take(count ?? int.MaxValue)
@@ -223,6 +230,7 @@ namespace EventFlux.RedisFlow.Tests.Fakes
         private StreamEntry[] Claim(string stream, string group, string consumer, long minIdle, RedisValue[] ids)
         {
             var g = _groups[(stream, group)];
+            g.Consumers[consumer] = NowMs;
             var result = new List<StreamEntry>();
             foreach (var id in ids.Select(i => i.ToString()))
             {
@@ -252,9 +260,48 @@ namespace EventFlux.RedisFlow.Tests.Fakes
                     typeof(StreamGroupInfo),
                     BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public,
                     null,
-                    new object?[] { kv.Key.Group, 1, kv.Value.Pending.Count, kv.Value.LastDeliveredId, null, null },
+                    new object?[] { kv.Key.Group, kv.Value.Consumers.Count, kv.Value.Pending.Count, kv.Value.LastDeliveredId, null, null },
                     null)!)
                 .ToArray();
+        }
+
+        private StreamConsumerInfo[] ConsumerInfo(string stream, string group)
+        {
+            if (!_groups.TryGetValue((stream, group), out var g))
+                throw new RedisServerException("NOGROUP");
+            return g.Consumers
+                .Select(kv => (StreamConsumerInfo)Activator.CreateInstance(
+                    typeof(StreamConsumerInfo),
+                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public,
+                    null,
+                    new object[] { kv.Key, g.Pending.Count(p => p.Value.Consumer == kv.Key), NowMs - kv.Value },
+                    null)!)
+                .ToArray();
+        }
+
+        public IReadOnlyList<string> Groups(string stream)
+        {
+            lock (_gate)
+            {
+                return _groups.Keys.Where(k => k.Stream == stream).Select(k => k.Group).OrderBy(n => n).ToArray();
+            }
+        }
+
+        public void DeleteGroup(string stream, string group)
+        {
+            lock (_gate)
+            {
+                _groups.Remove((stream, group));
+            }
+        }
+
+        public void Touch(string stream, string group, string consumer)
+        {
+            lock (_gate)
+            {
+                CreateGroup(stream, group);
+                _groups[(stream, group)].Consumers[consumer] = NowMs;
+            }
         }
 
         private StreamPendingInfo PendingSummary(string stream, string group)
@@ -302,6 +349,8 @@ namespace EventFlux.RedisFlow.Tests.Fakes
             public string LastDeliveredId { get; set; } = "0-0";
 
             public Dictionary<string, PendingState> Pending { get; } = new Dictionary<string, PendingState>();
+
+            public Dictionary<string, long> Consumers { get; } = new Dictionary<string, long>();
         }
 
         public class FakeMultiplexer : DispatchProxy

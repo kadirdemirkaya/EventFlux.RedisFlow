@@ -12,6 +12,7 @@ using EventFlux.RedisFlow.Redis;
 using EventFlux.RedisFlow.Abstractions;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace EventFlux.RedisFlow.Workers
 {
@@ -19,6 +20,9 @@ namespace EventFlux.RedisFlow.Workers
     {
         private static readonly TimeSpan MaxRetryScanInterval = TimeSpan.FromSeconds(1);
         private static readonly TimeSpan MaxReconnectDelay = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan SweepInterval = TimeSpan.FromSeconds(30);
+        private const int SweepBatchSize = 100;
+        internal static readonly TimeSpan StaleEphemeralGroupIdleTime = TimeSpan.FromHours(1);
 
         private readonly IDatabase _db;
         private readonly RedisStreamOptions _options;
@@ -28,6 +32,8 @@ namespace EventFlux.RedisFlow.Workers
         private readonly List<RedisValue> _acknowledged = new List<RedisValue>();
         private RedisValue? _retryCursor;
         private long _lastRetryScan;
+        private long _lastSweep;
+        private bool _staleGroupsChecked;
 
         public RedisStreamWorker(IConnectionMultiplexer mux, IOptions<RedisStreamOptions> options, IServiceProvider services, Microsoft.Extensions.Logging.ILogger<RedisStreamWorker> logger)
         {
@@ -88,6 +94,31 @@ namespace EventFlux.RedisFlow.Workers
             catch (RedisServerException ex) when (ex.Message.StartsWith("BUSYGROUP", StringComparison.Ordinal))
             {
             }
+
+            if (!_staleGroupsChecked && _options.EphemeralGroupBaseName != null)
+            {
+                await RemoveStaleEphemeralGroupsAsync().ConfigureAwait(false);
+                _staleGroupsChecked = true;
+            }
+        }
+
+        internal async Task RemoveStaleEphemeralGroupsAsync()
+        {
+            var pattern = new Regex("^" + Regex.Escape(_options.EphemeralGroupBaseName!) + "-[0-9a-f]{32}$");
+            var staleMs = (long)StaleEphemeralGroupIdleTime.TotalMilliseconds;
+
+            foreach (var group in await _db.StreamGroupInfoAsync(_options.StreamName).ConfigureAwait(false))
+            {
+                if (group.Name == _options.ConsumerGroup || !pattern.IsMatch(group.Name))
+                    continue;
+
+                var consumers = await _db.StreamConsumerInfoAsync(_options.StreamName, group.Name).ConfigureAwait(false);
+                if (consumers.Length == 0 || consumers.Any(c => c.IdleTimeInMilliseconds < staleMs))
+                    continue;
+
+                await _db.StreamDeleteConsumerGroupAsync(_options.StreamName, group.Name).ConfigureAwait(false);
+                _logger.LogWarning("Deleted consumer group {Group} of a stopped instance; its consumers were idle for more than {Idle}", group.Name, StaleEphemeralGroupIdleTime);
+            }
         }
 
         private async Task PollAsync(CancellationToken stoppingToken)
@@ -114,6 +145,9 @@ namespace EventFlux.RedisFlow.Workers
             }
 
             await DeleteProcessedEntriesAsync().ConfigureAwait(false);
+
+            if (_options.DeleteProcessedEntries && IsSweepDue())
+                await SweepProcessedEntriesAsync().ConfigureAwait(false);
         }
 
         internal static TimeSpan GetRetryDelay(int consecutiveFailures)
@@ -131,6 +165,22 @@ namespace EventFlux.RedisFlow.Workers
 
             if (cancellationToken.IsCancellationRequested)
                 _handlerCancellation.Cancel();
+
+            if (_options.EphemeralGroupBaseName != null)
+                await DeleteEphemeralGroupAsync().ConfigureAwait(false);
+        }
+
+        internal async Task DeleteEphemeralGroupAsync()
+        {
+            try
+            {
+                await _db.StreamDeleteConsumerGroupAsync(_options.StreamName, _options.ConsumerGroup).ConfigureAwait(false);
+                _logger.LogInformation("Deleted consumer group {Group} of this instance on shutdown", _options.ConsumerGroup);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete consumer group {Group} on shutdown", _options.ConsumerGroup);
+            }
         }
 
         public override void Dispose()
@@ -317,14 +367,38 @@ namespace EventFlux.RedisFlow.Workers
             var candidates = _acknowledged.ToArray();
             _acknowledged.Clear();
 
+            await DeleteIfProcessedByAllGroupsAsync(candidates, includeOwnGroup: false).ConfigureAwait(false);
+        }
+
+        internal async Task SweepProcessedEntriesAsync()
+        {
+            _lastSweep = Stopwatch.GetTimestamp();
+
+            try
+            {
+                var oldest = await _db.StreamRangeAsync(_options.StreamName, "-", "+", SweepBatchSize).ConfigureAwait(false);
+                if (oldest.Length > 0)
+                    await DeleteIfProcessedByAllGroupsAsync(oldest.Select(e => e.Id).ToArray(), includeOwnGroup: true).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to sweep processed entries from stream {Stream}", _options.StreamName);
+            }
+        }
+
+        private async Task DeleteIfProcessedByAllGroupsAsync(RedisValue[] candidates, bool includeOwnGroup)
+        {
             try
             {
                 var groups = await _db.StreamGroupInfoAsync(_options.StreamName).ConfigureAwait(false);
+                if (includeOwnGroup && groups.Length == 0)
+                    return;
+
                 var deletable = new HashSet<RedisValue>(candidates);
 
                 foreach (var group in groups)
                 {
-                    if (group.Name == _options.ConsumerGroup)
+                    if (!includeOwnGroup && group.Name == _options.ConsumerGroup)
                         continue;
 
                     deletable.RemoveWhere(id => CompareStreamIds(id, group.LastDeliveredId) > 0);
@@ -356,6 +430,11 @@ namespace EventFlux.RedisFlow.Workers
             {
                 _logger.LogWarning(ex, "Failed to delete processed entries from stream {Stream}; they are kept", _options.StreamName);
             }
+        }
+
+        private bool IsSweepDue()
+        {
+            return _lastSweep == 0 || Stopwatch.GetElapsedTime(_lastSweep) >= SweepInterval;
         }
 
         internal static int CompareStreamIds(RedisValue x, RedisValue y)
