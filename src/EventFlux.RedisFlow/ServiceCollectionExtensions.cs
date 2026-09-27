@@ -4,18 +4,17 @@ using System.Linq;
 using EventFlux.Abstractions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
 namespace EventFlux.RedisFlow
 {
-    using EventFlux.Extensions;
     using EventFlux.RedisFlow.Abstractions;
     using Redis;
 
     public static class ServiceCollectionExtensions
     {
-        // Compatibility overload: original signature accepted a params Assembly[]
         public static IServiceCollection AddRedisEventQueue(
             this IServiceCollection services,
             IConfiguration configuration,
@@ -31,7 +30,14 @@ namespace EventFlux.RedisFlow
             bool appendMachineNameToConsumerGroup = false,
             bool appendGuidToConsumerGroup = false)
         {
-            services.AddEventBus();
+            var scanAssemblies = assemblies == null
+                ? Array.Empty<Assembly>()
+                : assemblies.Where(a => a != null).Distinct().ToArray();
+
+            if (scanAssemblies.Length == 0)
+                scanAssemblies = new[] { typeof(ServiceCollectionExtensions).Assembly };
+
+            services.AddEventBus(scanAssemblies);
 
             services.Configure<RedisStreamOptions>(configuration.GetSection("RedisStream"));
 
@@ -41,7 +47,6 @@ namespace EventFlux.RedisFlow
                     ? "-" + Guid.NewGuid().ToString("N")
                     : "-" + Environment.MachineName;
 
-                // Post configure so we can append after configuration binding
                 services.PostConfigure<RedisStreamOptions>(opts =>
                 {
                     if (!string.IsNullOrEmpty(opts.ConsumerGroup) && !opts.ConsumerGroup.EndsWith(suffix))
@@ -63,24 +68,10 @@ namespace EventFlux.RedisFlow
                 return ConnectionMultiplexer.Connect(opts.ConnectionString);
             });
 
-            if (assemblies == null || assemblies.Length == 0)
+            foreach (var a in scanAssemblies)
             {
-                Redis.EventTypeResolver.RegisterEventsFromAssembly(typeof(ServiceCollectionExtensions).Assembly);
+                Redis.EventTypeResolver.RegisterEventsFromAssembly(a);
             }
-            else
-            {
-                foreach (var a in assemblies)
-                {
-                    if (a != null)
-                        Redis.EventTypeResolver.RegisterEventsFromAssembly(a);
-                }
-            }
-
-            Assembly[] scanAssemblies;
-            if (assemblies == null || assemblies.Length == 0)
-                scanAssemblies = new[] { typeof(ServiceCollectionExtensions).Assembly };
-            else
-                scanAssemblies = assemblies.Where(a => a != null).ToArray()!;
 
             var handlerInterface = typeof(IEventHandler<>);
             var registered = new System.Collections.Generic.List<(Type iface, Type impl)>();
@@ -95,7 +86,7 @@ namespace EventFlux.RedisFlow
                         var ifaces = t.GetInterfaces().Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == handlerInterface);
                         foreach (var iface in ifaces)
                         {
-                            services.AddTransient(iface, t);
+                            services.TryAddEnumerable(ServiceDescriptor.Transient(iface, t));
                             registered.Add((iface, t));
                         }
                     }

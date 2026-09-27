@@ -13,7 +13,7 @@ namespace EventFlux.RedisFlow.Redis
 
         public static void RegisterEvent<T>() where T : IEventRequest
         {
-            _map.TryAdd(typeof(T).Name, typeof(T));
+            _map.TryAdd(GetEventTypeName(typeof(T)), typeof(T));
         }
 
         public static void RegisterEvent(Type eventType)
@@ -21,7 +21,7 @@ namespace EventFlux.RedisFlow.Redis
             if (!typeof(IEventRequest).IsAssignableFrom(eventType))
                 throw new ArgumentException("Type must implement IEventRequest", nameof(eventType));
 
-            _map.TryAdd(eventType.Name, eventType);
+            _map.TryAdd(GetEventTypeName(eventType), eventType);
         }
 
         public static void RegisterEventsFromAssembly(Assembly assembly)
@@ -31,7 +31,7 @@ namespace EventFlux.RedisFlow.Redis
 
             foreach (var t in types)
             {
-                _map.TryAdd(t.Name, t);
+                _map.TryAdd(GetEventTypeName(t), t);
             }
         }
 
@@ -59,6 +59,11 @@ namespace EventFlux.RedisFlow.Redis
             }
 
             throw new KeyNotFoundException($"Event type '{name}' is not registered. Call EventTypeResolver.RegisterEvent<T>() or RegisterEventsFromAssembly(...), or ensure the type is loadable in the AppDomain.");
+        }
+
+        internal static string GetEventTypeName(Type eventType)
+        {
+            return eventType.Name;
         }
 
         public static IReadOnlyDictionary<string, Type> GetRegisteredEventTypes()

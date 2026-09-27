@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventFlux-RedisFlow-Consume
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventFlux-RedisFlow-Consumer.Api2", "tests\EventFlux-RedisFlow-Consumer.Api2\EventFlux-RedisFlow-Consumer.Api2.csproj", "{B124446D-3CC5-4EE4-8865-F5AF871B57D6}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EventFlux.RedisFlow.Tests", "tests\EventFlux.RedisFlow.Tests\EventFlux.RedisFlow.Tests.csproj", "{0C5BE468-2061-44CA-805E-9625CA7F3D35}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -37,6 +39,10 @@ Global
 		{B124446D-3CC5-4EE4-8865-F5AF871B57D6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B124446D-3CC5-4EE4-8865-F5AF871B57D6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B124446D-3CC5-4EE4-8865-F5AF871B57D6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0C5BE468-2061-44CA-805E-9625CA7F3D35}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0C5BE468-2061-44CA-805E-9625CA7F3D35}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0C5BE468-2061-44CA-805E-9625CA7F3D35}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0C5BE468-2061-44CA-805E-9625CA7F3D35}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -46,6 +52,7 @@ Global
 		{86EEA9EB-D6F7-4013-AFB2-E1B6F943E657} = {517B0D62-28D9-4B8F-83AB-42A68885305A}
 		{388E50E4-D396-4E15-A815-38C1A9AA8604} = {517B0D62-28D9-4B8F-83AB-42A68885305A}
 		{B124446D-3CC5-4EE4-8865-F5AF871B57D6} = {517B0D62-28D9-4B8F-83AB-42A68885305A}
+		{0C5BE468-2061-44CA-805E-9625CA7F3D35} = {517B0D62-28D9-4B8F-83AB-42A68885305A}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {B072F56F-2AC3-43C7-8DCE-A1B584C814B8}
