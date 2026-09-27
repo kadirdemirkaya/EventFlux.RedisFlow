@@ -197,7 +197,7 @@ public class PublishEventHandler : IEventHandler<PublishEventRequest>
 | `StreamName` | `event-stream` | Stream to publish to and consume from. |
 | `ConsumerGroup` | `event-group` | Consumer group of this service. |
 | `ConsumerName` | machine name | Consumer name inside the group. Use a distinct name per instance. |
-| `BatchSize` | `10` | Entries read per call. |
+| `BatchSize` | `10` | Entries read per call. The worker reads the next batch right away while entries are queued and pauses 100 ms only when the stream is empty. |
 | `EnableRetry` | `true` | Retry failed and abandoned pending entries. `false` leaves a failed entry pending without retrying it. |
 | `MaxDeliveryAttempts` | `5` | Deliveries after which an entry is moved to the dead-letter stream. `0` or less retries without limit. |
 | `RetryIdleTime` | `00:00:30` | How long an entry must be pending before it is retried. Keep it longer than your slowest handler. |

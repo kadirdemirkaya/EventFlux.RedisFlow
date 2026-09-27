@@ -27,6 +27,7 @@
 			- Fixed the worker stopping the application when Redis is unavailable for more than a few seconds or when the stream or consumer group is deleted; the worker now retries with a backoff of up to 30 seconds and recreates the consumer group
 			- The application now starts while Redis is unavailable and connects once Redis is reachable; add abortConnect=true to the connection string to keep failing at startup
 			- appendGuidToConsumerGroup: an instance deletes its own consumer group when it stops, and on start deletes groups of stopped instances whose consumers were idle for more than an hour, so old groups no longer pile up, keep entries in the stream or cause entries to be processed again
+			- Performance: the worker reads the next batch right away while entries are queued and pauses only when the stream is empty, which lifts the previous limit of about 100 entries per second per consumer with the default BatchSize
 			- The Redis stream entry format is unchanged; entries written by 1.0.x are read by 1.1.0 and the other way round</PackageReleaseNotes>
 		<AssemblyInformationalVersion>1.1.0</AssemblyInformationalVersion>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
