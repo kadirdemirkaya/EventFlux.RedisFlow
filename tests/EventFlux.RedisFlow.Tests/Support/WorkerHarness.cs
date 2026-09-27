@@ -40,6 +40,11 @@ namespace EventFlux.RedisFlow.Tests.Support
 
         public static WorkerHarness Create(FakeStreamDatabase fake, string group, params (string Key, string Value)[] settings)
         {
+            return Create(fake, group, null, settings);
+        }
+
+        public static WorkerHarness Create(FakeStreamDatabase fake, string group, Action<RedisStreamOptions>? configure, params (string Key, string Value)[] settings)
+        {
             var values = new Dictionary<string, string?>
             {
                 ["RedisStream:ConnectionString"] = "fake:6379",
@@ -61,6 +66,7 @@ namespace EventFlux.RedisFlow.Tests.Support
 
             var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
             var options = provider.GetRequiredService<IOptions<RedisStreamOptions>>();
+            configure?.Invoke(options.Value);
             var worker = new RedisStreamWorker(fake.Multiplexer, options, provider, NullLogger<RedisStreamWorker>.Instance);
             return new WorkerHarness(fake, provider, worker, options.Value);
         }

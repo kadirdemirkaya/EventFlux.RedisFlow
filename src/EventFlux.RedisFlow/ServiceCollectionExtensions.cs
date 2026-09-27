@@ -51,6 +51,9 @@ namespace EventFlux.RedisFlow
                 {
                     if (!string.IsNullOrEmpty(opts.ConsumerGroup) && !opts.ConsumerGroup.EndsWith(suffix))
                     {
+                        if (appendGuidToConsumerGroup)
+                            opts.EphemeralGroupBaseName = opts.ConsumerGroup;
+
                         opts.ConsumerGroup = opts.ConsumerGroup + suffix;
                     }
                 });
