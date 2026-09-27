@@ -58,8 +58,11 @@ namespace EventFlux.RedisFlow.Workers
                         consumerGroupReady = true;
                     }
 
-                    await PollAsync(stoppingToken).ConfigureAwait(false);
+                    var read = await PollAsync(stoppingToken).ConfigureAwait(false);
                     consecutiveFailures = 0;
+
+                    if (read > 0)
+                        continue;
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
@@ -121,7 +124,7 @@ namespace EventFlux.RedisFlow.Workers
             }
         }
 
-        private async Task PollAsync(CancellationToken stoppingToken)
+        private async Task<int> PollAsync(CancellationToken stoppingToken)
         {
             if (_options.EnableRetry && IsRetryScanDue())
             {
@@ -148,6 +151,8 @@ namespace EventFlux.RedisFlow.Workers
 
             if (_options.DeleteProcessedEntries && IsSweepDue())
                 await SweepProcessedEntriesAsync().ConfigureAwait(false);
+
+            return entries.Length;
         }
 
         internal static TimeSpan GetRetryDelay(int consecutiveFailures)

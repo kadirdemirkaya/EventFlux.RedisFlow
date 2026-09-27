@@ -19,6 +19,8 @@ namespace EventFlux.RedisFlow.Tests.Fakes
 
         public bool Unavailable { get; set; }
 
+        public int ReadCalls { get; private set; }
+
         public int FailingAcknowledgements { get; set; }
 
         public IConnectionMultiplexer Multiplexer { get; private set; } = null!;
@@ -171,6 +173,7 @@ namespace EventFlux.RedisFlow.Tests.Fakes
             if (!_groups.TryGetValue((stream, group), out var g))
                 throw new RedisServerException("NOGROUP");
             g.Consumers[consumer] = NowMs;
+            ReadCalls++;
             var result = Entries(stream)
                 .Where(e => Compare(e.Id.ToString(), g.LastDeliveredId) > 0)
                 .Take(count ?? int.MaxValue)
