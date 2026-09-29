@@ -6,15 +6,20 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<PackageId>EventFlux.RedisFlow</PackageId>
-		<Version>1.1.0</Version>
+		<Version>1.1.1</Version>
 		<Authors>Kadir Demirkaya</Authors>
 		<PackageLicenseFile>LICENSE.txt</PackageLicenseFile>
 		<Description>Lightweight .NET library for event-driven applications, providing distributed event support and domain events with EventFlux and Redis.</Description>
 		<RepositoryType>git</RepositoryType>
+		<RepositoryUrl>https://github.com/kadirdemirkaya/EventFlux.RedisFlow</RepositoryUrl>
+		<PackageProjectUrl>https://github.com/kadirdemirkaya/EventFlux.RedisFlow</PackageProjectUrl>
 		<PackageTags>
 			CQRS;EventBus;EventSourcing;DistributedEvents;Redis;EventFlux;DomainEvents;.NET;MessageBroker;EventDriven
 		</PackageTags>
-		<PackageReleaseNotes>v1.1.0:
+		<PackageReleaseNotes>v1.1.1:
+			- Added the EventFlux icon to the package and the README, and the repository link to the package metadata. No code changes
+
+			v1.1.0:
 			- Requires EventFlux 2.1.1 or later; handlers use the 2.x signature Handle(TEvent, CancellationToken)
 			- Fixed AddRedisEventQueue failing with EventFlux 2.x (ArgumentException: At least one assembly must be provided); the assemblies you pass are now forwarded to AddEventBus
 			- Fixed the worker failing with MissingMethodException on EventFlux 2.x; the host stopping token is passed to handlers
@@ -29,14 +34,16 @@
 			- appendGuidToConsumerGroup: an instance deletes its own consumer group when it stops, and on start deletes groups of stopped instances whose consumers were idle for more than an hour, so old groups no longer pile up, keep entries in the stream or cause entries to be processed again
 			- Performance: the worker reads the next batch right away while entries are queued and pauses only when the stream is empty, which lifts the previous limit of about 100 entries per second per consumer with the default BatchSize
 			- The Redis stream entry format is unchanged; entries written by 1.0.x are read by 1.1.0 and the other way round</PackageReleaseNotes>
-		<AssemblyInformationalVersion>1.1.0</AssemblyInformationalVersion>
+		<AssemblyInformationalVersion>1.1.1</AssemblyInformationalVersion>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageIcon>icon.png</PackageIcon>
 		<PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<None Include="..\..\README.md" Pack="true" PackagePath="" />
 		<None Include="..\..\LICENSE.txt" Pack="true" PackagePath="" />
+		<None Include="..\..\assets\icon.png" Pack="true" PackagePath="" />
 	</ItemGroup>
 
 	<ItemGroup>
