@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/kadirdemirkaya/EventFlux.RedisFlow/main/assets/icon.png" alt="EventFlux logo" width="112" />
+</p>
+
 ## NuGet Package Information
 
 | Package | Downloads | License |
@@ -33,13 +37,13 @@ entries, resolves event types, publishes them to EventFlux's `IEventBus` and so 
 1. Install the package:
 
 ```powershell
-dotnet add package EventFlux.RedisFlow --version 1.1.0
+dotnet add package EventFlux.RedisFlow --version 1.1.1
 ```
 
 Or via `<PackageReference>` in your `.csproj`:
 
 ```xml
-<PackageReference Include="EventFlux.RedisFlow" Version="1.1.0" />
+<PackageReference Include="EventFlux.RedisFlow" Version="1.1.1" />
 ```
 
 2. Configure Redis stream settings in `appsettings.json`:
